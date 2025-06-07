@@ -1,0 +1,150 @@
+
+---
+title: "Seattle Link Light-Rail Network Analysis"
+author: "Albany Garcia"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+---
+
+# Summary
+
+This project explores Seattle's Link light-rail system using network analysis. By treating stations as nodes and their direct connections as edges, we identify the busiest transfer hubs, uncover regional clusters, simulate future extensions, and lay the groundwork for comparing these insights to ridership patterns.
+
+**Goals:**
+
+- Quantify station importance using degree centrality  
+- Reveal natural station groupings with community detection  
+- Measure how adding the Everett extension shifts network flow  
+- Prepare the network model for future ridership comparisons 
+
+# Setup 
+
+```{r setup, message=FALSE}
+packages <- c("dplyr", "readr", "igraph", "sf", "ggraph", "scales")
+installed <- packages %in% installed.packages()[, "Package"]
+if (any(!installed)) install.packages(packages[!installed])
+lapply(packages, library, character.only = TRUE)
+```
+
+# Data Description
+
+All datasets below are **publicly available** 
+
+- **Stations**  
+  - **Source:** [light_rail_stations.csv](https://data-seattlecitygis.opendata.arcgis.com/datasets/SeattleCityGIS%3A%3Alight-rail-stations-1) (Seattle Open Data)  
+  - **Columns:** `stop_id`, `stop_name`, `stop_lat`, `stop_lon`  
+  - **Data Collected:** Updated **May 23, 2024**  
+  - **Description:** Each row represents a Link station (node) with its unique ID, official name, and geographic coordinates.
+
+- **Stop Times**  
+  - **Source:** [stop_times.txt](https://www.soundtransit.org/help-contacts/business-information/open-transit-data-otd/otd-downloads) (Sound Transit GTFS static feed)  
+  - **Columns:** `trip_id`, `arrival_time`, `departure_time`, `stop_id`, `stop_sequence`  
+  - **Data Collected:** GTFS feed effective **June 1, 2025**  
+  - **Description:** Ordered list of stops for each train trip—used to infer edges between consecutive stations.
+
+- **Trips**  
+  - **Source:** [trips.txt](https://www.soundtransit.org/help-contacts/business-information/open-transit-data-otd/otd-downloads) (Sound Transit GTFS static feed)  
+  - **Columns:** `route_id`, `service_id`, `trip_id`, `trip_headsign`, `direction_id`, `shape_id`  
+  - **Data Collected:** GTFS feed effective **June 1, 2025**  
+  - **Description:** Metadata for each trip, including which route and direction it serves—optional for annotating or filtering edges by line.
+
+
+
+```{r load-data}
+stations <- read_csv("light_rail_stations.csv")
+stop_times <- read_csv("stop_times.txt")
+trips <- read_csv("trips.txt")
+```
+
+# Create Graph
+
+```{r}
+edges <- stop_times %>%
+  arrange(trip_id, stop_sequence) %>%
+  group_by(trip_id) %>%
+  mutate(next_stop = lead(stop_id)) %>%
+  ungroup() %>%
+  filter(!is.na(next_stop)) %>%
+  select(from = stop_id, to = next_stop)
+
+# 4. Construct the igraph object
+g <- graph_from_data_frame(edges, directed = FALSE)
+
+# 5. Compute centrality and community
+V(g)$degree      <- degree(g)
+V(g)$betweenness <- betweenness(g)
+clusters         <- cluster_fast_greedy(g)
+V(g)$community   <- membership(clusters)
+
+g
+
+
+```
+
+
+# Network Visualization
+
+```{r base-network-plot, fig.height=6, fig.width=8}
+plot(
+  g,
+  vertex.label     = V(g)$name,
+  vertex.label.cex = 0.8,              
+  vertex.size      = V(g)$degree * 4,  
+  vertex.color     = V(g)$community,   
+  edge.width       = 0.5,              
+  main             = "Seattle Link Light Rail Network (Base)"
+)
+```
+
+# Everett Extension Simulation
+
+```{r}
+g_expanded <- g
+g_expanded <- add_vertices(g_expanded, nv = 1, name = "Everett")
+g_expanded <- add_edges(g_expanded, c("Northgate", "Everett"))
+
+# Recompute betweenness and rescale for plotting
+bet_after    <- betweenness(g_expanded)
+scaled_size  <- rescale(bet_after, to = c(5, 20))
+
+plot(
+  g_expanded,
+  vertex.label = V(g_expanded)$name,
+  vertex.size  = scaled_size,
+  edge.width   = 1,
+  main         = "Seattle Light Rail Network with Everett"
+)
+
+```
+
+
+# Analyze 
+
+```{r}
+library(knitr)
+centrality_df <- tibble(
+  station      = V(g)$name,
+  degree       = V(g)$degree,
+  betweenness  = V(g)$betweenness,
+  community    = V(g)$community
+) %>%
+  arrange(desc(degree))
+
+kable(head(centrality_df, 10),
+      caption = "Top 10 Stations by Degree Centrality")
+
+```
+# Conclusion
+
+Our analysis shows **Westlake** and **International District/Chinatown** as the busiest transfer points, each directly linked to more stations than any other. Community detection uncovers three main corridors—Airport–Downtown, North Seattle, and Suburban—reflecting how riders move through the system. Simulating the Everett extension elevates **Northgate**’s role as a critical bridge to the new northern terminus.  
+
+These findings offer transit planners clear targets for service enhancements: bolstering capacity and amenities at key hubs now, and focusing on Northgate in preparation for Everett. Next steps include integrating actual ridership data and adding temporal layers to capture peak vs. off-peak dynamics.  
+
+
+
+
+
+

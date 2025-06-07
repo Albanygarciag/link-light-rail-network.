@@ -1,0 +1,12 @@
+trip_id,arrival_time,departure_time,stop_id,stop_sequence
+T1,08:00,08:01,AngleLake,1
+T1,08:05,08:06,SeaTac,2
+T1,08:10,08:11,Tukwila,3
+T1,08:15,08:16,RainierBeach,4
+T1,08:20,08:21,MountBaker,5
+T1,08:25,08:26,IntlDistrict,6
+T1,08:30,08:31,Westlake,7
+T1,08:35,08:36,UStreet,8
+T1,08:40,08:41,Roosevelt,9
+T1,08:45,08:46,Northgate,10
+T1,08:50,08:51,Lynnwood,11
